@@ -1,57 +1,79 @@
-PROJ_NAME := keyboard_firmware
+PROJECT := keyboard_firmware
+
+TARGET ?= MAX32650
+TARGET_UC := $(shell echo $(TARGET) | tr '[:lower:]' '[:upper:]')
+TARGET_LC := $(shell echo $(TARGET) | tr '[:upper:]' '[:lower:]')
+export TARGET
+export TARGET_UC
+export TARGET_LC
+
+#BOARD ?= keyboard
+BOARD := EvKit_V1
+
+ifeq ($(strip $(MAXIM_PATH)),)
+$(error MAXIM_PATH not defined.)
+endif
+
+LIBS_DIR := $(abspath $(MAXIM_PATH)/Libraries)
+CMSIS_ROOT := $(LIBS_DIR)/CMSIS
+export CMSIS_ROOT
+
+COMPILER := GCC
+ifneq ($(strip $(DEBUG)),)
+MXC_OPTIMIZE_CFLAGS += -Og -g
+else
+MXC_OPTIMIZE_CFLAGS += -O2
+endif
+
+MFLOAT_ABI ?= softfp
+export MFLOAT_ABI
+
+PROJ_CFLAGS += -Wall
+PROJ_CFLAGS += -DMXC_ENABLE
+#PROJ_CFLAGS += -DNO_EVAL_FEATURES
+PROJ_CFLAGS += -fdiagnostics-color=always
 
 CROSS_COMPILE ?= arm-none-eabi
 CC := $(CROSS_COMPILE)-gcc
 LD := $(CROSS_COMPILE)-ld
 OBJCOPY := $(CROSS_COMPILE)-objcopy
+OBJDUMP := $(CROSS_COMPILE)-objdump
 
-SRC_DIR := src
-BLD_DIR := build
+VPATH += src
+VPATH += src/target/$(TARGET_LC)
+VPATH += $(CMSIS_ROOT)/Device/Maxim/$(TARGET_UC)/Source
+VPATH := $(VPATH)
+SRCS := $(wildcard $(addsuffix /*.c, $(VPATH)))
 
-PROJ_SRCS := $(shell find $(SRC_DIR) -name "*.[cs]")
-PROJ_OBJS := $(addprefix $(BLD_DIR)/,$(patsubst %.c,%.o,$(patsubst %.s,%.o,$(PROJ_SRCS))))
+IPATH += .
+IPATH += include
 
-NXP_SDK ?= $(HOME)/projects/nxp_sdk
-SDK_DEVICE := MIMXRT1062
-SDK_DIR := $(NXP_SDK)
-SDK_DEVICE_DIR := $(SDK_DIR)/devices/$(SDK_DEVICE)
+SRC_DIR ?= src
+BLD_DIR ?= build
 
-SDK_SRCS := $(shell find $(SDK_DEVICE_DIR)/drivers -name "*.c") $(shell find $(SDK_DEVICE_DIR)/utilities -name "*.c")
-SDK_OBJS := $(addprefix $(BLD_DIR)/,$(subst $(SDK_DEVICE_DIR),sdk,$(patsubst %.c,%.o,$(SDK_SRCS))))
+LINKERFILE := src/linker.ld
+STARTUPFILE := src/startup.S
 
-OBJS := $(SDK_OBJS) $(PROJ_OBJS)
+LIB_BOARD := 1
+include $(LIBS_DIR)/libs.mk
+include $(CMSIS_ROOT)/Device/Maxim/$(TARGET_UC)/Source/$(COMPILER)/$(TARGET_LC).mk
 
-$(BLD_DIR)/src/%.o: $(SRC_DIR)/%.c
-	$(CC) $(CFLAGS) -o $@ $<
+ifeq ($(strip $(MAKECMDGOALS)),)
+MAKECMDGOALS := all
+endif
 
-$(BLD_DIR)/src/%.o: $(SRC_DIR)/%.s
-	$(CC) $(CFLAGS) -o $@ $<
+.PHONY: all clean libclean distclean
 
-$(BLD_DIR)/sdk/%.o: $(SDK_DEVICE_DIR)/%.c
-	$(CC) $(CFLAGS) -o $@ $<
+all: $(BLD_DIR)/$(PROJECT).bin $(BLD_DIR)/$(PROJECT).dasm
+	arm-none-eabi-size --format=berkeley $(BUILD_DIR)/$(PROJECT).elf
 
-%.elf:
-	@mkdir -p $(@D)
-	$(LD) -T $(LINKER_FILE) --entry $(ENTRY) $(LDFLAGS) -o $@ $^
+clean:
+	$(RM) -r $(BLD_DIR)
 
-%.bin: %.elf
-	$(OBJCOPY) -O binary $< $@
+libclean: 
+	$(MAKE) -f $(PERIPH_DRIVER_DIR)/periphdriver.mk clean.periph
 
-%.hex: %.elf
-	$(OBJCOPY) -O ihex $< $@
-
-%.dasm: %.elf
-	$(OBJDUMP) -S $< > $@
-
-$(BLD_DIR)/$(PROJ_NAME).elf: $(OBJS)
-
-$(BLD_DIR)/$(PROJ_NAME).bin: $(BLD_DIR)/$(PROJ_NAME).elf
-
-$(BLD_DIR)/$(PROJ_NAME).hex: $(BLD_DIR)/$(PROJ_NAME).elf
-
-$(BLD_DIR)/$(PROJ_NAME).dasm: $(BLD_DIR)/$(PROJ_NAME).elf
-
-all: $(BLD_DIR)/$(PROJ_NAME).bin $(BLD_DIR)/$(PROJ_NAME).hex $(BLD_DIR)/$(PROJ_NAME).dasm
+distclean: clean libclean
 
 print-%:
 	@echo $* = $($*)

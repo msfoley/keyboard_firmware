@@ -1,233 +1,140 @@
-/*
-** ###################################################################
-**     Processors:          MIMXRT1062CVJ5A
-**                          MIMXRT1062CVJ5B
-**                          MIMXRT1062CVL5A
-**                          MIMXRT1062CVL5B
-**                          MIMXRT1062DVJ6A
-**                          MIMXRT1062DVJ6B
-**                          MIMXRT1062DVL6A
-**                          MIMXRT1062DVL6B
-**                          MIMXRT1062DVN6B
-**                          MIMXRT1062XVN5B
-**
-**     Compiler:            GNU C Compiler
-**     Reference manual:    IMXRT1060RM Rev.3, 07/2021 | IMXRT106XSRM Rev.0
-**     Version:             rev. 0.2, 2022-03-25
-**     Build:               b221009
-**
-**     Abstract:
-**         Linker file for the GNU C Compiler
-**
-**     Copyright 2016 Freescale Semiconductor, Inc.
-**     Copyright 2016-2022 NXP
-**     All rights reserved.
-**
-**     SPDX-License-Identifier: BSD-3-Clause
-**
-**     http:                 www.nxp.com
-**     mail:                 support@nxp.com
-**
-** ###################################################################
-*/
+/******************************************************************************
+ *
+ * Copyright (C) 2022-2023 Maxim Integrated Products, Inc. All Rights Reserved.
+ * (now owned by Analog Devices, Inc.),
+ * Copyright (C) 2023 Analog Devices, Inc. All Rights Reserved. This software
+ * is proprietary to Analog Devices, Inc. and its licensors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ ******************************************************************************/
 
-/* Entry Point */
-ENTRY(Reset_Handler)
 
-HEAP_SIZE  = DEFINED(__heap_size__)  ? __heap_size__  : 0x0400;
-STACK_SIZE = DEFINED(__stack_size__) ? __stack_size__ : 0x0400;
-
-/* Specify the memory areas */
-MEMORY
-{
-  m_interrupts          (RX)  : ORIGIN = 0x00000000, LENGTH = 0x00000400
-  m_text                (RX)  : ORIGIN = 0x00000400, LENGTH = 0x0001FC00
-  m_data                (RW)  : ORIGIN = 0x20000000, LENGTH = 0x00020000
-  m_data2               (RW)  : ORIGIN = 0x20200000, LENGTH = 0x000C0000
+MEMORY {
+    ROM (rx)   : ORIGIN = 0x00000000, LENGTH = 0x00010000 /* 64kB ROM */
+    FLASH (rx) : ORIGIN = 0x10000000, LENGTH = 0x00300000 /* 3MB flash */
+    SRAM (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00100000 /* 1MB SRAM */
 }
 
-/* Define output sections */
-SECTIONS
-{
-  __NCACHE_REGION_START = ORIGIN(m_data2);
-  __NCACHE_REGION_SIZE  = 0;
+SECTIONS {
+    .text :
+    {
+        _text = .;
+        KEEP(*(.isr_vector))
+        *(.text*)    /* program code */
+        *(.rodata*)  /* read-only data: "const" */
 
-  /* The startup code goes first into internal RAM */
-  .interrupts :
-  {
-    __VECTOR_TABLE = .;
-    __Vectors = .;
-    . = ALIGN(4);
-    KEEP(*(.isr_vector))     /* Startup code */
-    . = ALIGN(4);
-  } > m_interrupts
+        KEEP(*(.init))
+        KEEP(*(.fini))
 
-  /* The program code and other data goes into internal RAM */
-  .text :
-  {
-    . = ALIGN(4);
-    *(.text)                 /* .text sections (code) */
-    *(.text*)                /* .text* sections (code) */
-    *(.rodata)               /* .rodata sections (constants, strings, etc.) */
-    *(.rodata*)              /* .rodata* sections (constants, strings, etc.) */
-    *(CodeQuickAccess)       /* quick access code section */
-    *(.glue_7)               /* glue arm to thumb code */
-    *(.glue_7t)              /* glue thumb to arm code */
-    *(.eh_frame)
-    KEEP (*(.init))
-    KEEP (*(.fini))
-    . = ALIGN(4);
-  } > m_text
+         /* .ctors */
+        *crtbegin.o(.ctors)
+        *crtbegin?.o(.ctors)
+        *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
+        *(SORT(.ctors.*))
+        *(.ctors)
 
-  .ARM.extab :
-  {
-    *(.ARM.extab* .gnu.linkonce.armextab.*)
-  } > m_text
+        /* .dtors */
+        *crtbegin.o(.dtors)
+        *crtbegin?.o(.dtors)
+        *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
+        *(SORT(.dtors.*))
+        *(.dtors)
 
-  .ARM :
-  {
-    __exidx_start = .;
-    *(.ARM.exidx*)
-    __exidx_end = .;
-  } > m_text
+        /* C++ Exception handling */
+        KEEP(*(.eh_frame*))
+        _etext = .;
+    } > FLASH
 
- .ctors :
-  {
-    __CTOR_LIST__ = .;
-    /* gcc uses crtbegin.o to find the start of
-       the constructors, so we make sure it is
-       first.  Because this is a wildcard, it
-       doesn't matter if the user does not
-       actually link against crtbegin.o; the
-       linker won't look for a file to match a
-       wildcard.  The wildcard also means that it
-       doesn't matter which directory crtbegin.o
-       is in.  */
-    KEEP (*crtbegin.o(.ctors))
-    KEEP (*crtbegin?.o(.ctors))
-    /* We don't want to include the .ctor section from
-       from the crtend.o file until after the sorted ctors.
-       The .ctor section from the crtend file contains the
-       end of ctors marker and it must be last */
-    KEEP (*(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors))
-    KEEP (*(SORT(.ctors.*)))
-    KEEP (*(.ctors))
-    __CTOR_END__ = .;
-  } > m_text
+    .ARM.extab :
+    {
+        *(.ARM.extab* .gnu.linkonce.armextab.*)
+    } > FLASH
 
-  .dtors :
-  {
-    __DTOR_LIST__ = .;
-    KEEP (*crtbegin.o(.dtors))
-    KEEP (*crtbegin?.o(.dtors))
-    KEEP (*(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors))
-    KEEP (*(SORT(.dtors.*)))
-    KEEP (*(.dtors))
-    __DTOR_END__ = .;
-  } > m_text
+    /* it's used for C++ exception handling      */
+    /* we need to keep this to avoid overlapping */
+    .ARM.exidx :
+    {
+        __exidx_start = .;
+        *(.ARM.exidx* .gnu.linkonce.armexidx.*)
+        __exidx_end = .;
+    } > FLASH
 
-  .preinit_array :
-  {
-    PROVIDE_HIDDEN (__preinit_array_start = .);
-    KEEP (*(.preinit_array*))
-    PROVIDE_HIDDEN (__preinit_array_end = .);
-  } > m_text
+    .data :
+    {
+        _data = ALIGN(., 4);
+        *(vtable)
+        *(.data*)           /*read-write initialized data: initialized global variable*/
+        *(.spix_config*)    /* SPIX configuration functions need to be run from SRAM */
+        *(.flashprog*)      /* Flash program */
 
-  .init_array :
-  {
-    PROVIDE_HIDDEN (__init_array_start = .);
-    KEEP (*(SORT(.init_array.*)))
-    KEEP (*(.init_array*))
-    PROVIDE_HIDDEN (__init_array_end = .);
-  } > m_text
 
-  .fini_array :
-  {
-    PROVIDE_HIDDEN (__fini_array_start = .);
-    KEEP (*(SORT(.fini_array.*)))
-    KEEP (*(.fini_array*))
-    PROVIDE_HIDDEN (__fini_array_end = .);
-  } > m_text
+        /* These array sections are used by __libc_init_array to call static C++ constructors */
+        . = ALIGN(4);
+        /* preinit data */
+        PROVIDE_HIDDEN (__preinit_array_start = .);
+        KEEP(*(.preinit_array))
+        PROVIDE_HIDDEN (__preinit_array_end = .);
 
-  __etext = .;    /* define a global symbol at end of code */
-  __DATA_ROM = .; /* Symbol is used by startup for data initialization */
+        . = ALIGN(4);
+        /* init data */
+        PROVIDE_HIDDEN (__init_array_start = .);
+        KEEP(*(SORT(.init_array.*)))
+        KEEP(*(.init_array))
+        PROVIDE_HIDDEN (__init_array_end = .);
 
-  __VECTOR_RAM = ORIGIN(m_interrupts);
-  __RAM_VECTOR_TABLE_SIZE_BYTES = 0x0;
+        . = ALIGN(4);
+        /* finit data */
+        PROVIDE_HIDDEN (__fini_array_start = .);
+        KEEP(*(SORT(.fini_array.*)))
+        KEEP(*(.fini_array))
+        PROVIDE_HIDDEN (__fini_array_end = .);
 
-  .data : AT(__DATA_ROM)
-  {
-    . = ALIGN(4);
-    __DATA_RAM = .;
-    __data_start__ = .;      /* create a global symbol at data start */
-    *(m_usb_dma_init_data)
-    *(.data)                 /* .data sections */
-    *(.data*)                /* .data* sections */
-    *(DataQuickAccess)       /* quick access data section */
-    KEEP(*(.jcr*))
-    . = ALIGN(4);
-    __data_end__ = .;        /* define a global symbol at data end */
-  } > m_data
+        _edata = ALIGN(., 4);
+    } > SRAM AT>FLASH
+    __load_data = LOADADDR(.data);
 
-  __NDATA_ROM = __DATA_ROM + (__data_end__ - __data_start__);
-  .ncache.init : AT(__NDATA_ROM)
-  {
-    __noncachedata_start__ = .;   /* create a global symbol at ncache data start */
-    *(NonCacheable.init)
-    . = ALIGN(4);
-    __noncachedata_init_end__ = .;   /* create a global symbol at initialized ncache data end */
-  } > m_data
-  . = __noncachedata_init_end__;
-  .ncache :
-  {
-    *(NonCacheable)
-    . = ALIGN(4);
-    __noncachedata_end__ = .;     /* define a global symbol at ncache data end */
-  } > m_data
+    .bss :
+    {
+        . = ALIGN(4);
+        _bss = .;
+        *(.bss*)     /*read-write zero initialized data: uninitialzed global variable*/
+        *(COMMON)
+        _ebss = ALIGN(., 4);
+    } > SRAM
 
-  __DATA_END = __NDATA_ROM + (__noncachedata_init_end__ - __noncachedata_start__);
-  text_end = ORIGIN(m_text) + LENGTH(m_text);
-  ASSERT(__DATA_END <= text_end, "region m_text overflowed with text and data")
+    /* Set stack top to end of RAM, and stack limit move down by
+     * size of stack_dummy section */
+    __StackTop = ORIGIN(SRAM) + LENGTH(SRAM);
+    __StackLimit = __StackTop - SIZEOF(.stack_dummy);
 
-  /* Uninitialized data section */
-  .bss :
-  {
-    /* This is used by the startup in order to initialize the .bss section */
-    . = ALIGN(4);
-    __START_BSS = .;
-    __bss_start__ = .;
-    *(m_usb_dma_noninit_data)
-    *(.bss)
-    *(.bss*)
-    *(COMMON)
-    . = ALIGN(4);
-    __bss_end__ = .;
-    __END_BSS = .;
-  } > m_data
+    /* .stack_dummy section doesn't contains any symbols. It is only
+     * used for linker to calculate size of stack sections, and assign
+     * values to stack symbols later */
+    .stack_dummy (COPY):
+    {
+        *(.stack*)
+    } > SRAM
 
-  .heap :
-  {
-    . = ALIGN(8);
-    __end__ = .;
-    PROVIDE(end = .);
-    __HeapBase = .;
-    . += HEAP_SIZE;
-    __HeapLimit = .;
-    __heap_limit = .; /* Add for _sbrk */
-  } > m_data
+    .heap (COPY):
+    {
+        . = ALIGN(4);
+        *(.heap*)
+        __HeapLimit = ABSOLUTE(__StackLimit);
+    } > SRAM
 
-  .stack :
-  {
-    . = ALIGN(8);
-    . += STACK_SIZE;
-  } > m_data
+    PROVIDE(__stack = __StackTop);
 
-  /* Initializes stack on the end of block */
-  __StackTop   = ORIGIN(m_data) + LENGTH(m_data);
-  __StackLimit = __StackTop - STACK_SIZE;
-  PROVIDE(__stack = __StackTop);
-
-  .ARM.attributes 0 : { *(.ARM.attributes) }
-
-  ASSERT(__StackLimit >= __HeapLimit, "region m_data overflowed with stack and heap")
+    /* Check if data + heap + stack exceeds RAM limit */
+    ASSERT(__StackLimit >= _ebss, "region RAM overflowed with stack")
 }
